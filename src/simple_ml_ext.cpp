@@ -32,11 +32,50 @@ void softmax_regression_epoch_cpp(const float *X, const unsigned char *y,
      *     (None)
      */
 
-    /// BEGIN YOUR CODE
+    float logit[k];
+    float grad_theta[n * k];
+    // std::cout << "m=" << m << "\tn=" << n << "\tk=" << k << std::endl;
+    for(size_t index=0; index <= m / batch; index++) {
+        size_t row_s = index * batch;
+        size_t row_e = row_s + batch > m ? m : row_s + batch;
+        size_t rown = row_e - row_s;
+        if (rown <= 0) break;
+        // std::cout << "index:\t" << index << std::endl;
+        // forward_pass
+        for (size_t ix = 0; ix < n * k; ix++) {
+            grad_theta[ix] = 0.0;
+        }
+        for (size_t row_i = row_s;row_i < row_e; row_i ++) {
+            float cum_sum = 0.0;
+            for (size_t k_i = 0; k_i < k; k_i++) {
+                logit[k_i] = 0.0;
+                for (size_t j=0;j<n;j++) {
+                    logit[k_i] += X[row_i * n + j] * theta[j * k + k_i];
+                    // std::cout << X[row_i * n + j] << "----" << theta[j * n + k] << logit[k_i] << std::endl;
+                }
+                logit[k_i] = std::exp(logit[k_i]);
+                cum_sum += logit[k_i];
+                // std::cout << logit[k_i] << "\t++++\t cum_sum=" << cum_sum << std::endl;
+            }
+            // std::cout << "label: " << uint(y[row_i]) << std::endl;
+            for (size_t k_i = 0; k_i < k; k_i++) {
+                logit[k_i] = logit[k_i] / cum_sum;
+                // std::cout << "row_i: \t" << row_i << "\tlogit :\t" << k_i << "=" << logit[k_i] << std::endl;
+            }
+            for (size_t k_i = 0; k_i < k; k_i++) {
+                for (size_t j = 0; j < n; j++) {
+                    grad_theta[j * k + k_i] +=  X[row_i * n + j] * (logit[k_i] - (uint(y[row_i]) == k_i ? 1.0 : 0));
+                    // std::cout << "k_i:\t" << k_i << "\tj:\t" << j << "\t" << X[row_i * n + j] * (logit[k_i] - (uint(y[row_i]) == k_i ? 1.0 : 0)) << "~~~~" << grad_theta[j * k + k_i] << std::endl;
+                }
+            }
+            // if (row_i >= 4) break;
+        }
+        for (size_t ix = 0; ix < n * k; ix++) {
+            theta[ix] -= grad_theta[ix] * lr / rown;
+        }
+    }
 
-    /// END YOUR CODE
 }
-
 
 /**
  * This is the pybind11 code that wraps the function above.  It's only role is

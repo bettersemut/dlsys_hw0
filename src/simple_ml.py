@@ -1,6 +1,7 @@
 import struct
 import numpy as np
 import gzip
+import idx2numpy
 try:
     from simple_ml_ext import *
 except:
@@ -20,6 +21,7 @@ def add(x, y):
         Sum of x + y
     """
     ### BEGIN YOUR CODE
+    return x + y
     pass
     ### END YOUR CODE
 
@@ -34,12 +36,12 @@ def parse_mnist(image_filename, label_filename):
 
     Returns:
         Tuple (X,y):
-            X (numpy.ndarray[np.float32]): 2D numpy array containing the loaded 
-                data.  The dimensionality of the data should be 
-                (num_examples x input_dim) where 'input_dim' is the full 
-                dimension of the data, e.g., since MNIST images are 28x28, it 
-                will be 784.  Values should be of type np.float32, and the data 
-                should be normalized to have a minimum value of 0.0 and a 
+            X (numpy.ndarray[np.float32]): 2D numpy array containing the loaded
+                data.  The dimensionality of the data should be
+                (num_examples x input_dim) where 'input_dim' is the full
+                dimension of the data, e.g., since MNIST images are 28x28, it
+                will be 784.  Values should be of type np.float32, and the data
+                should be normalized to have a minimum value of 0.0 and a
                 maximum value of 1.0. The normalization should be applied uniformly
                 across the whole dataset, _not_ individual images.
 
@@ -48,7 +50,14 @@ def parse_mnist(image_filename, label_filename):
                 for MNIST will contain the values 0-9.
     """
     ### BEGIN YOUR CODE
-    pass
+    with gzip.open(image_filename) as f:
+        X = idx2numpy.convert_from_file(f)
+        X = X.reshape(-1, 28 * 28)
+        X = X / 255.0
+    with gzip.open(label_filename) as f:
+        y = idx2numpy.convert_from_file(f)
+        y = y.reshape(-1)
+    return X.astype('float32'), y.astype('uint8')
     ### END YOUR CODE
 
 
@@ -67,12 +76,14 @@ def softmax_loss(Z, y):
     Returns:
         Average softmax loss over the sample.
     """
+
     ### BEGIN YOUR CODE
-    pass
+    prob = np.exp(Z) / np.sum(np.exp(Z), axis=1, keepdims=True)
+    return -np.log(prob[np.arange(y.shape[0]), y]).sum() / Z.shape[0]
     ### END YOUR CODE
 
 
-def softmax_regression_epoch(X, y, theta, lr = 0.1, batch=100):
+def softmax_regression_epoch(B_X, B_y, theta, lr = 0.1, batch=100):
     """ Run a single epoch of SGD for softmax regression on the data, using
     the step size lr and specified batch size.  This function should modify the
     theta matrix in place, and you should iterate through batches in X _without_
@@ -91,11 +102,36 @@ def softmax_regression_epoch(X, y, theta, lr = 0.1, batch=100):
         None
     """
     ### BEGIN YOUR CODE
-    pass
+    # print("theta", theta.shape)
+    for index in range(int(np.floor(B_X.shape[0]/batch))):
+        X = B_X[index*batch:(index+1)*batch, :]
+        rown = X.shape[0]
+        if rown == 0:
+            break
+        y = B_y[index*batch:(index+1)*batch]
+        logit = np.matmul(X, theta)
+        logit_exp = np.exp(logit)
+        logit_sum = np.sum(logit_exp, axis=1, keepdims=True)
+        prob = logit_exp / logit_sum
+        # mask = np.zeros_like(prob)
+        # mask[np.arange(prob.shape[0]), y] = 1
+
+        # grad_prob = - 1 / prob * mask
+        # # print(logit_exp.shape, logit_sum.shape)
+        # grad_p_g_eye = logit_exp.reshape(rown, -1) / logit_sum
+        # grad_p_g =  -1 * np.expand_dims(logit_exp, axis=2) * np.expand_dims(logit_exp, axis=1) / np.expand_dims(logit_sum ** 2, axis=2) + np.expand_dims(grad_p_g_eye, axis=1) * np.eye(grad_p_g_eye.shape[1])
+        # grad_logit = (np.expand_dims(grad_prob, axis=1) * grad_p_g).sum(axis=2)
+        identity_y = np.zeros_like(logit)
+        identity_y[np.arange(rown), y] = 1
+        grad_logit = prob - identity_y
+
+        grad_theta = np.matmul(X.T, grad_logit)
+        theta -= lr * grad_theta / rown
+
     ### END YOUR CODE
 
 
-def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
+def nn_epoch(B_X, B_y, W1, W2, lr = 0.1, batch=100):
     """ Run a single epoch of SGD for a two-layer neural network defined by the
     weights W1 and W2 (with no bias terms):
         logits = ReLU(X * W1) * W2
@@ -117,9 +153,30 @@ def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
     Returns:
         None
     """
-    ### BEGIN YOUR CODE
-    pass
-    ### END YOUR CODE
+    for index in range(int(np.floor(B_X.shape[0]/batch))):
+        X = B_X[index * batch: (index + 1) * batch, :]
+        rown = X.shape[0]
+        if rown == 0:
+            break
+        y = B_y[index * batch: (index + 1) * batch]
+
+        a1 = np.matmul(X, W1)
+        a1_p = np.where(a1 > 0, a1, 0)
+        logit = np.matmul(a1_p, W2)
+        logit_exp = np.exp(logit)
+        logit_sum = np.sum(logit_exp, axis=1, keepdims=True)
+        prob = logit_exp / logit_sum
+        identity_y = np.zeros_like(logit)
+        identity_y[np.arange(rown), y] = 1
+        grad_logit = prob - identity_y
+        grad_w2 = np.matmul(a1_p.T, grad_logit)
+        grad_a1_p = np.matmul(grad_logit, W2.T)
+        # grad_w1 = np.matmul(W1, np.matmul(np.where(a1.T > 0, 1.0, 0.0), grad_a1_p))
+        grad_w1 = np.matmul(X.T, np.matmul(grad_logit, W2.T) * np.where(a1 > 0, 1, 0))
+        W2 -= lr * grad_w2 / rown
+        W1 -= lr * grad_w1 / rown
+
+
 
 
 
